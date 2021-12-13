@@ -29,53 +29,35 @@ def bob_deinterlace(top, bottom):
     ty, tu, tv = top
     by, bu, bv = bottom
 
-    ty = np.repeat(ty, [2] * ty.shape[0], axis=0)
-    tu = np.repeat(tu, [2] * tu.shape[0], axis=0)
-    tv = np.repeat(tv, [2] * tv.shape[0], axis=0)
+    ty = cv.resize(ty, None, None, 1, 2, cv.INTER_LINEAR)
+    tu = cv.resize(tu, None, None, 1, 2, cv.INTER_LINEAR)
+    tv = cv.resize(tv, None, None, 1, 2, cv.INTER_LINEAR)
 
-    by = np.repeat(by, [2] * by.shape[0], axis=0)
-    bu = np.repeat(bu, [2] * bu.shape[0], axis=0)
-    bv = np.repeat(bv, [2] * bv.shape[0], axis=0)
+    by = cv.resize(by, None, None, 1, 2, cv.INTER_LINEAR)
+    bu = cv.resize(bu, None, None, 1, 2, cv.INTER_LINEAR)
+    bv = cv.resize(bv, None, None, 1, 2, cv.INTER_LINEAR)
 
     return (ty, tu, tv), (by, bu, bv)
 
 #@profile
 def decompress420(u, v):
-    u = np.repeat(u, [2] * u.shape[0], axis=0)
-    u = np.repeat(u, [2] * u.shape[1], axis=1)
-
-    v = np.repeat(v, [2] * v.shape[0], axis=0)
-    v = np.repeat(v, [2] * v.shape[1], axis=1)
+    u = cv.resize(u, None, None, 2, 2, cv.INTER_NEAREST)
+    v = cv.resize(v, None, None, 2, 2, cv.INTER_NEAREST)
 
     return u, v
 
 #@profile
 def convert(path):
-    with open(path, 'rb') as f:
-        magic = f.readline()
-        if magic != b'P5\n':
-            raise RuntimeError("The input file is not a pgm image")
-
-        width, height = list(map(lambda x: int(x), f.readline().split(b' ')))
-        max_intensity = int(f.readline()[:-1])
-        pixels = np.fromfile(f, dtype=np.uint8)
+    image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
+    height, width = image.shape
 
     chroma_height = height // 3
     chroma_width = width // 2
 
-    yuv_splited_top = np.ndarray((height // 2, width))
-    yuv_splited_bottom = np.ndarray((height // 2, width))
+    image = image.astype('int16')
 
-
-    for idx in range(0, len(pixels), width):
-        read_line = idx // width
-        if read_line % 2 == 0:
-            yuv_splited_top[read_line//2] = pixels[idx:idx+width]
-        else:
-            yuv_splited_bottom[read_line//2] = pixels[idx:idx+width]
-
-    yuv_splited_top *= 255 / max_intensity
-    yuv_splited_bottom *= 255 / max_intensity
+    yuv_splited_top = image[0::2]
+    yuv_splited_bottom = image[1::2]
 
     yuv_recomposed_top = np.zeros((height - chroma_height, width, 3))
     yuv_recomposed_bottom = np.zeros((height - chroma_height, width, 3))
@@ -97,8 +79,8 @@ def convert(path):
     yuv_recomposed_top = np.dstack([top_y, top_u, top_v])
     yuv_recomposed_bottom = np.dstack([bottom_y, bottom_u, bottom_v])
 
-    rgb_top = np.dot(yuv_recomposed_top, YUV2BGR.T)
-    rgb_bottom = np.dot(yuv_recomposed_bottom, YUV2BGR.T)
+    rgb_top = np.matmul(yuv_recomposed_top, YUV2BGR.T)
+    rgb_bottom = np.matmul(yuv_recomposed_bottom, YUV2BGR.T)
 
     rgb_top = rgb_top.clip(0, 255).astype(np.uint8)
     rgb_bottom = rgb_bottom.clip(0, 255).astype(np.uint8)
@@ -130,19 +112,29 @@ if __name__ == '__main__':
     wait_time = 1 / args.frame_rate
 
     movie = []
+    rgb_top, rgb_bottom = convert(image_list[0])
+    movie.append(rgb_top)
+    movie.append(rgb_bottom)
     frame_displayed = 0
+    image_loaded = 1
     timer = 0
-    for i, image in enumerate(image_list):
-        rgb_top, rgb_bottom = convert(image)
-        movie.append(rgb_top)
-        movie.append(rgb_bottom)
-        print(f"Loading image {i}/{len(image_list)}", end='\r')
+    while frame_displayed < len(movie):
+        if image_loaded < len(image_list):
+            image = image_list[image_loaded]
+            rgb_top, rgb_bottom = convert(image)
+            image_loaded += 1
+            movie.append(rgb_top)
+            movie.append(rgb_bottom)
+            print(f"Loading image {image_loaded}/{len(image_list)}", end='\r')
+        else:
+            print("All image loaded\t\t ", end='\r')
 
         if args.display:
             if time.perf_counter() - timer >= wait_time:
-                cv.imshow("ppm converted", movie[frame_displayed])
-                frame_displayed += 1
+                print(f"\t\t\t\t\t\tReal frame rate: {1/(time.perf_counter() - timer):.2f}", end='\r')
                 timer = time.perf_counter()
+                frame_displayed += 1
+                cv.imshow("ppm converted", movie[frame_displayed])
                 cv.waitKey(1)
         else:
             if args.outpath:
