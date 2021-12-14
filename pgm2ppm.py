@@ -133,9 +133,9 @@ if __name__ == '__main__':
             if time.perf_counter() - timer >= wait_time:
                 print(f"\t\t\t\t\t\tReal frame rate: {1/(time.perf_counter() - timer):.2f}", end='\r')
                 timer = time.perf_counter()
-                frame_displayed += 1
                 cv.imshow("ppm converted", movie[frame_displayed])
                 cv.waitKey(1)
+                frame_displayed += 1
         else:
             if args.outpath:
                 outpath = args.outpath
