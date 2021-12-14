@@ -70,11 +70,12 @@ def convert(path):
     bottom_u = yuv_splited_bottom[-chroma_height//2:, :chroma_width] - 128
     bottom_v = yuv_splited_bottom[-chroma_height//2:, chroma_width:] - 128
 
-    (top_y, top_u, top_v), (bottom_y, bottom_u, bottom_v) = \
-        bob_deinterlace((top_y, top_u, top_v), (bottom_y, bottom_u, bottom_v))
 
     top_u, top_v = decompress420(top_u, top_v)
     bottom_u, bottom_v = decompress420(bottom_u, bottom_v)
+
+    (top_y, top_u, top_v), (bottom_y, bottom_u, bottom_v) = \
+        bob_deinterlace((top_y, top_u, top_v), (bottom_y, bottom_u, bottom_v))
 
     yuv_recomposed_top = np.dstack([top_y, top_u, top_v])
     yuv_recomposed_bottom = np.dstack([bottom_y, bottom_u, bottom_v])
@@ -118,6 +119,7 @@ if __name__ == '__main__':
     frame_displayed = 0
     image_loaded = 1
     timer = 0
+    frame_rate = 0
     while frame_displayed < len(movie):
         if image_loaded < len(image_list):
             image = image_list[image_loaded]
@@ -131,7 +133,8 @@ if __name__ == '__main__':
 
         if args.display:
             if time.perf_counter() - timer >= wait_time:
-                print(f"\t\t\t\t\t\tReal frame rate: {1/(time.perf_counter() - timer):.2f}", end='\r')
+                frame_rate = 0.8 * frame_rate + 0.2 / (time.perf_counter() - timer) # Weighted average
+                print(f"\t\t\t\t\t\tReal frame rate: {frame_rate:.2f}", end='\r')
                 timer = time.perf_counter()
                 cv.imshow("ppm converted", movie[frame_displayed])
                 cv.waitKey(1)
