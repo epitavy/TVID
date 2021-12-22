@@ -9,6 +9,9 @@ import numpy as np
 # Monkey patch to allow raw concatenation
 pathlib.Path.__add__ = lambda self, rhs: pathlib.Path(str(self) + rhs)
 
+FRAME_RATE = None
+DEFAULT_IPS = 25
+
 YUV2BGR = np.array([
     [1, 2.03211, 0],
     [1, -0.39465, -0.58060],
@@ -41,13 +44,13 @@ def bob_deinterlace(top, bottom):
 
 #@profile
 def decompress420(u, v):
-    u = cv.resize(u, None, None, 2, 2, cv.INTER_NEAREST)
-    v = cv.resize(v, None, None, 2, 2, cv.INTER_NEAREST)
+    u = cv.resize(u, None, None, 2, 2, cv.INTER_LINEAR)
+    v = cv.resize(v, None, None, 2, 2, cv.INTER_LINEAR)
 
     return u, v
 
 #@profile
-def convert(path):
+def convert(path, deinterlace):
     with open(path, 'rb') as f:
         buffer = f.read()
 
@@ -62,13 +65,15 @@ def convert(path):
             top_field_first = bool(int(comment[ips_end+11]))
             progressive_frame = bool(int(comment[ips_end+18]))
         else:
-            ips = 25
+            ips = -1
             repeat_first_field = False
             top_field_first = True
             progressive_frame = True
 
         image = cv.imdecode(np.frombuffer(buffer, dtype=np.uint8), cv.IMREAD_GRAYSCALE)
 
+    if deinterlace: # Overwrite image flags
+        progressive_frame = False
 
     chroma_height = height // 3
     chroma_width = width // 2
@@ -83,7 +88,7 @@ def convert(path):
         yuv_recomposed = np.dstack([image_y, u, v])
         rgb = np.matmul(yuv_recomposed, YUV2BGR.T)
 
-        return rgb.clip(0, 255).astype(np.uint8), None
+        return rgb.clip(0, 255).astype(np.uint8), None, ips
 
 
 
@@ -115,9 +120,9 @@ def convert(path):
     rgb_bottom = rgb_bottom.clip(0, 255).astype(np.uint8)
 
     if top_field_first:
-        return rgb_top, rgb_bottom
+        return rgb_top, rgb_bottom, ips * 2
     else:
-        return rgb_bottom, rgb_top
+        return rgb_bottom, rgb_top, ips * 2
 
 
 if __name__ == '__main__':
@@ -126,7 +131,8 @@ if __name__ == '__main__':
     parser.add_argument("input", help="The input file, in pgm format")
     parser.add_argument("-o", "--outpath", help="The output path to write the converted image")
     parser.add_argument("--display", help="Display image instead of converting to ppm", action="store_true")
-    parser.add_argument("--frame_rate", help="Frame rate used when displaying output on screen", type=int, default=25)
+    parser.add_argument("--deinterlace", help="Force deinterlacing", action="store_true")
+    parser.add_argument("--frame_rate", help="Frame rate used when displaying output on screen", type=int)
     args = parser.parse_args()
 
     input_is_dir = os.path.isdir(args.input)
@@ -141,10 +147,9 @@ if __name__ == '__main__':
     else:
         image_list = [args.input]
 
-    wait_time = 1 / args.frame_rate
 
     movie = []
-    rgb_top, rgb_bottom = convert(image_list[0])
+    rgb_top, rgb_bottom, _ = convert(image_list[0], args.deinterlace)
     movie.append(rgb_top)
     if rgb_bottom is not None:
         movie.append(rgb_bottom)
@@ -155,7 +160,17 @@ if __name__ == '__main__':
     while frame_displayed < len(movie):
         if image_loaded < len(image_list):
             image = image_list[image_loaded]
-            rgb_top, rgb_bottom = convert(image)
+            rgb_top, rgb_bottom, ips = convert(image, args.deinterlace)
+            if args.frame_rate:
+                WAIT_TIME = 1 / args.frame_rate
+            elif ips > 0:
+                WAIT_TIME = 1 / ips
+            elif WAIT_TIME is None:
+                WAIT_TIME = 1 / DEFAULT_IPS
+
+            if ips == -2: # Double frame rate, frame is interlaced
+                WAIT_TIME /= 2
+
             image_loaded += 1
             movie.append(rgb_top)
             if rgb_bottom is not None:
@@ -165,7 +180,7 @@ if __name__ == '__main__':
             print("All image loaded\t\t ", end='\r')
 
         if args.display:
-            if time.perf_counter() - timer >= wait_time:
+            if time.perf_counter() - timer >= WAIT_TIME:
                 frame_rate = 0.8 * frame_rate + 0.2 / (time.perf_counter() - timer) # Weighted average
                 print(f"\t\t\t\t\t\tReal frame rate: {frame_rate:.2f}", end='\r')
                 timer = time.perf_counter()
