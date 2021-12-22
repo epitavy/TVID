@@ -48,19 +48,47 @@ def decompress420(u, v):
 
 #@profile
 def convert(path):
-    image = cv.imread(str(path), cv.IMREAD_GRAYSCALE)
-    height, width = image.shape
+    with open(path, 'rb') as f:
+        buffer = f.read()
+
+        width, height = int(buffer[3:6].decode('utf-8')), int(buffer[7:10].decode('utf-8'))
+
+        comment_idx = buffer.find(b'#')
+        if comment_idx != -1 and comment_idx < 30: # Worst check ever
+            comment = buffer[comment_idx:comment_idx+27].decode('utf-8')
+            ips_end = comment.find(' rff')
+            ips = int(comment[5:ips_end])
+            repeat_first_field = bool(int(comment[ips_end+5]))
+            top_field_first = bool(int(comment[ips_end+11]))
+            progressive_frame = bool(int(comment[ips_end+18]))
+        else:
+            ips = 25
+            repeat_first_field = False
+            top_field_first = True
+            progressive_frame = True
+
+        image = cv.imdecode(np.frombuffer(buffer, dtype=np.uint8), cv.IMREAD_GRAYSCALE)
+
 
     chroma_height = height // 3
     chroma_width = width // 2
 
     image = image.astype('int16')
 
+    if progressive_frame:
+        image_y = image[:-chroma_height] - 16
+        image_u = image[-chroma_height:, :chroma_width] - 128
+        image_v = image[-chroma_height:, chroma_width:] - 128
+        u, v = decompress420(image_u, image_v)
+        yuv_recomposed = np.dstack([image_y, u, v])
+        rgb = np.matmul(yuv_recomposed, YUV2BGR.T)
+
+        return rgb.clip(0, 255).astype(np.uint8), None
+
+
+
     yuv_splited_top = image[0::2]
     yuv_splited_bottom = image[1::2]
-
-    yuv_recomposed_top = np.zeros((height - chroma_height, width, 3))
-    yuv_recomposed_bottom = np.zeros((height - chroma_height, width, 3))
 
     top_y = yuv_splited_top[:-chroma_height//2] - 16
     top_u = yuv_splited_top[-chroma_height//2:, :chroma_width] - 128
@@ -86,7 +114,10 @@ def convert(path):
     rgb_top = rgb_top.clip(0, 255).astype(np.uint8)
     rgb_bottom = rgb_bottom.clip(0, 255).astype(np.uint8)
 
-    return rgb_top, rgb_bottom
+    if top_field_first:
+        return rgb_top, rgb_bottom
+    else:
+        return rgb_bottom, rgb_top
 
 
 if __name__ == '__main__':
@@ -115,7 +146,8 @@ if __name__ == '__main__':
     movie = []
     rgb_top, rgb_bottom = convert(image_list[0])
     movie.append(rgb_top)
-    movie.append(rgb_bottom)
+    if rgb_bottom is not None:
+        movie.append(rgb_bottom)
     frame_displayed = 0
     image_loaded = 1
     timer = 0
@@ -126,7 +158,8 @@ if __name__ == '__main__':
             rgb_top, rgb_bottom = convert(image)
             image_loaded += 1
             movie.append(rgb_top)
-            movie.append(rgb_bottom)
+            if rgb_bottom is not None:
+                movie.append(rgb_bottom)
             print(f"Loading image {image_loaded}/{len(image_list)}", end='\r')
         else:
             print("All image loaded\t\t ", end='\r')
