@@ -290,6 +290,10 @@ static void decode_mpeg2 (uint8_t * current, uint8_t * end)
     } else
         cadence_ips = -1;
 
+    output->setup (output, info->sequence->width,
+               info->sequence->height,
+               info->sequence->chroma_width,
+               info->sequence->chroma_height, &setup_result);
     switch (state) {
     case STATE_BUFFER:
         return;

@@ -128,7 +128,7 @@ def convert(path, deinterlace):
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser("Convert YUV interlaced image to RGB ppm")
-    parser.add_argument("input", help="The input file, in pgm format")
+    parser.add_argument("input", help="The input file or input directory, in pgm format")
     parser.add_argument("-o", "--outpath", help="The output path to write the converted image")
     parser.add_argument("--display", help="Display image instead of converting to ppm", action="store_true")
     parser.add_argument("--deinterlace", help="Force deinterlacing", action="store_true")
