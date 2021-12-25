@@ -9,7 +9,7 @@ import numpy as np
 # Monkey patch to allow raw concatenation
 pathlib.Path.__add__ = lambda self, rhs: pathlib.Path(str(self) + rhs)
 
-FRAME_RATE = None
+WAIT_TIME = None
 DEFAULT_IPS = 25
 
 YUV2BGR = np.array([
@@ -54,22 +54,26 @@ def convert(path, deinterlace):
     with open(path, 'rb') as f:
         buffer = f.read()
 
-        width, height = int(buffer[3:6].decode('utf-8')), int(buffer[7:10].decode('utf-8'))
 
-        comment_idx = buffer.find(b'#')
-        if comment_idx != -1 and comment_idx < 30: # Worst check ever
-            comment = buffer[comment_idx:comment_idx+27].decode('utf-8')
+        if buffer[3] == ord('#'):
+            comment_end = buffer[3:].find(b'\n') + 3
+            comment = buffer[3:comment_end].decode('utf-8')
             ips_end = comment.find(' rff')
             ips = int(comment[5:ips_end])
             repeat_first_field = bool(int(comment[ips_end+5]))
             top_field_first = bool(int(comment[ips_end+11]))
             progressive_frame = bool(int(comment[ips_end+18]))
+            wh_line = buffer[comment_end+1:buffer[comment_end+1:].find(b'\n') + comment_end+1]
         else:
             ips = -1
             repeat_first_field = False
             top_field_first = True
             progressive_frame = True
+            wh_line = buffer[3:buffer[3:].find(b'\n') + 3]
 
+
+        wh_line = wh_line.split(b' ')
+        width, height = int(wh_line[0].decode('utf-8')), int(wh_line[1].decode('utf-8'))
         image = cv.imdecode(np.frombuffer(buffer, dtype=np.uint8), cv.IMREAD_GRAYSCALE)
 
     if deinterlace: # Overwrite image flags
@@ -177,11 +181,11 @@ if __name__ == '__main__':
                 movie.append(rgb_bottom)
             print(f"Loading image {image_loaded}/{len(image_list)}", end='\r')
         else:
-            print("All image loaded\t\t ", end='\r')
+            print("All image loaded        ", end='\r')
 
         if args.display:
             if time.perf_counter() - timer >= WAIT_TIME:
-                frame_rate = 0.8 * frame_rate + 0.2 / (time.perf_counter() - timer) # Weighted average
+                frame_rate = 0.95 * frame_rate + 0.05 / (time.perf_counter() - timer) # Weighted average
                 print(f"\t\t\t\t\t\tReal frame rate: {frame_rate:.2f}", end='\r')
                 timer = time.perf_counter()
                 cv.imshow("ppm converted", movie[frame_displayed])

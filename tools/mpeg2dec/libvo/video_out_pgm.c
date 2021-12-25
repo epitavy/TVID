@@ -117,8 +117,8 @@ static int pgm_setup (vo_instance_t * _instance, unsigned int width,
     instance->height = height;
     instance->chroma_width = chroma_width;
     instance->chroma_height = chroma_height;
-    sprintf (instance->header, "P5\n%d %d\n255\n#ips:%d rff:%d tff:%d prog:%d\n", 2 * chroma_width,
-	     height + chroma_height, cadence_ips, is_rff, is_tff, is_prog);
+    sprintf (instance->header, "P5\n#ips:%d rff:%d tff:%d prog:%d\n%d %d\n255\n", cadence_ips, is_rff, is_tff, is_prog, 2 * chroma_width,
+	     height + chroma_height);
     result->convert = NULL;
     return 0;
 }
