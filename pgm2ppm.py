@@ -18,39 +18,27 @@ YUV2BGR = np.array([
     [1, 0, 1.13983]
 ])
 
-def write_rgb_ppm(img, outpath):
-    with open(outpath, 'w') as f:
-
-        f.write(f"P3\n{len(img[0])} {len(img)}\n255\n")
-
-        for line in img:
-            for pix in line:
-                f.write(f"{pix[0]} {pix[1]} {pix[2]}\n")
-
-#@profile
 def bob_deinterlace(top, bottom):
     ty, tu, tv = top
     by, bu, bv = bottom
 
-    ty = cv.resize(ty, None, None, 1, 2, cv.INTER_LINEAR)
-    tu = cv.resize(tu, None, None, 1, 2, cv.INTER_LINEAR)
-    tv = cv.resize(tv, None, None, 1, 2, cv.INTER_LINEAR)
+    ty = cv.resize(ty, (ty.shape[1], ty.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
+    tu = cv.resize(tu, (tu.shape[1], tu.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
+    tv = cv.resize(tv, (tv.shape[1], tv.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
 
-    by = cv.resize(by, None, None, 1, 2, cv.INTER_LINEAR)
-    bu = cv.resize(bu, None, None, 1, 2, cv.INTER_LINEAR)
-    bv = cv.resize(bv, None, None, 1, 2, cv.INTER_LINEAR)
+    by = cv.resize(by, (by.shape[1], by.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
+    bu = cv.resize(bu, (bu.shape[1], bu.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
+    bv = cv.resize(bv, (bv.shape[1], bv.shape[0]*2), None, 0, 0, cv.INTER_LINEAR)
 
     return (ty, tu, tv), (by, bu, bv)
 
-#@profile
 def decompress420(u, v):
     u = cv.resize(u, None, None, 2, 2, cv.INTER_LINEAR)
     v = cv.resize(v, None, None, 2, 2, cv.INTER_LINEAR)
 
     return u, v
 
-#@profile
-def convert(path, deinterlace):
+def convert(path, deinterlace=False, nodeinterlace=False):
     with open(path, 'rb') as f:
         buffer = f.read()
 
@@ -78,6 +66,8 @@ def convert(path, deinterlace):
 
     if deinterlace: # Overwrite image flags
         progressive_frame = False
+    elif nodeinterlace:
+        progressive_frame = True
 
     chroma_height = height // 3
     chroma_width = width // 2
@@ -123,6 +113,7 @@ def convert(path, deinterlace):
     rgb_top = rgb_top.clip(0, 255).astype(np.uint8)
     rgb_bottom = rgb_bottom.clip(0, 255).astype(np.uint8)
 
+
     if top_field_first:
         return rgb_top, rgb_bottom, ips * 2
     else:
@@ -136,8 +127,12 @@ if __name__ == '__main__':
     parser.add_argument("-o", "--outpath", help="The output path to write the converted image")
     parser.add_argument("--display", help="Display image instead of converting to ppm", action="store_true")
     parser.add_argument("--deinterlace", help="Force deinterlacing", action="store_true")
+    parser.add_argument("--no_deinterlace", help="Force no deinterlacing", action="store_true")
     parser.add_argument("--frame_rate", help="Frame rate used when displaying output on screen", type=int)
     args = parser.parse_args()
+
+    if args.no_deinterlace and args.deinterlace:
+        parser.error("You cannot specify both no_deinterlace and deinterlace")
 
     input_is_dir = os.path.isdir(args.input)
 
@@ -146,14 +141,15 @@ if __name__ == '__main__':
 
     if input_is_dir:
         image_list = os.listdir(args.input)
+        image_list = [file for file in image_list if file.endswith('.pgm')]
         image_list.sort(key=lambda f: int(''.join(filter(str.isdigit, f))))
-        image_list = [pathlib.Path(args.input, file) for file in image_list if file.endswith('.pgm')]
+        image_list = [pathlib.Path(args.input, file) for file in image_list]
     else:
         image_list = [args.input]
 
 
     movie = []
-    rgb_top, rgb_bottom, _ = convert(image_list[0], args.deinterlace)
+    rgb_top, rgb_bottom, _ = convert(image_list[0], deinterlace=args.deinterlace, nodeinterlace=args.no_deinterlace)
     movie.append(rgb_top)
     if rgb_bottom is not None:
         movie.append(rgb_bottom)
@@ -164,7 +160,7 @@ if __name__ == '__main__':
     while frame_displayed < len(movie):
         if image_loaded < len(image_list):
             image = image_list[image_loaded]
-            rgb_top, rgb_bottom, ips = convert(image, args.deinterlace)
+            rgb_top, rgb_bottom, ips = convert(image, deinterlace=args.deinterlace, nodeinterlace=args.no_deinterlace)
             if args.frame_rate:
                 WAIT_TIME = 1 / args.frame_rate
             elif ips > 0:
@@ -203,4 +199,5 @@ if __name__ == '__main__':
                 os.makedirs(outpath, exist_ok=True)
                 outpath = pathlib.Path(outpath, image.stem)
 
-            write_rgb_ppm(rgb_top, outpath + '-i.ppm')
+            cv.imwrite(str(outpath + f'-{frame_displayed}.ppm'), movie[frame_displayed])
+            frame_displayed += 1
