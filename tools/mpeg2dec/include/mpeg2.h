@@ -201,8 +201,8 @@ void mpeg2_free (void * buf);
 void mpeg2_malloc_hooks (void * malloc (unsigned, mpeg2_alloc_t),
 			 int free (void *));
 
-//extern int is_tff;
-//extern int is_rff;
-//extern int is_prog;
+extern int is_tff;
+extern int is_rff;
+extern int is_prog;
 
 #endif /* LIBMPEG2_MPEG2_H */
