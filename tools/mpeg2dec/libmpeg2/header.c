@@ -616,6 +616,12 @@ static int picture_coding_ext (mpeg2dec_t * mpeg2dec)
     flags = picture->flags;
     decoder->intra_dc_precision = 7 - ((buffer[2] >> 2) & 3);
     decoder->picture_structure = buffer[2] & 3;
+	if (mpeg2dec->sequence.flags & SEQ_FLAG_PROGRESSIVE_SEQUENCE) {
+		printf("seq prog\n");
+		return 1;
+	} else {
+		printf("not seq prog\n");
+	}
     switch (decoder->picture_structure) {
     case TOP_FIELD:
     flags |= PIC_FLAG_TOP_FIELD_FIRST;
